@@ -38,6 +38,7 @@ def get_current_user_email(token: str = Depends(oauth2_scheme)) -> str:
 def create_resume(resume_data: ResumeCreate, db: Session = Depends(get_db)):
     default_user_id = 1  # Replace with the ID of the default user
     return crud_resume.create_resume(db, default_user_id, resume_data)
+
 @router.get("/", response_model=list[ResumeOut])
 def list_resumes(db: Session = Depends(get_db)):
     default_user_id = 1

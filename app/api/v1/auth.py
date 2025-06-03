@@ -15,6 +15,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     db_user = crud_user.get_user_by_email(db, user_data.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
+    # print(user_data.dict())
     return crud_user.create_user(db, user=user_data)
 
 @router.post("/login")  

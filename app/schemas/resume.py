@@ -3,7 +3,12 @@ from typing import Optional
 from datetime import datetime
 
 class ResumeCreate(BaseModel):
-    content: str
+    id:int
+    name:str
+    email:str
+    phoneNumber:str
+    location:str
+    title=str
 
 class ResumeOut(BaseModel):
     id: int

@@ -8,8 +8,10 @@ class Resume(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(Text, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(JSON, nullable=False)
     version = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", backref="resumes")
