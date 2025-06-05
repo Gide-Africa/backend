@@ -1,12 +1,19 @@
+# app/schemas/firebase_schemas.py
 from pydantic import BaseModel
-
+from app.schemas.user import UserOut # --- ADD THIS IMPORT! ---
 
 class FirebaseTokenRequest(BaseModel):
-    id_token: str # The Firebase ID token sent from the frontend
+    """
+    Schema for requests containing a Firebase ID token.
+    """
+    id_token: str
 
-# Assuming your authentication response involves a User schema and an access token
 class AuthSuccessResponse(BaseModel):
-    user: dict # Or replace with your User schema if defined
+    """
+    Schema for a successful authentication response.
+    Includes the authenticated user's data and an access token.
+    """
+    user: UserOut # --- CHANGED FROM 'dict' TO 'UserOut' ---
     access_token: str
-
-
+    token_type: str = "bearer" # Added token_type for consistency
+    expires_in: int = 3600 # Added expires_in for consistency (example default)

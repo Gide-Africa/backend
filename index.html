@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Google Auth Tester</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f2f5; color: #333; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; width: 90%; max-width: 500px; }
+        h1 { color: #333; margin-bottom: 25px; }
+        h2 { color: #555; margin-top: 30px; margin-bottom: 15px; }
+        button {
+            background-color: #4285F4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 10px auto;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        button:hover { background-color: #357ae8; transform: translateY(-1px); }
+        button:active { transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        button img { margin-right: 10px; }
+        input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .section { border-top: 1px solid #eee; padding-top: 20px; margin-top: 20px; }
+        #log {
+            text-align: left;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.9em;
+            color: #666;
+            white-space: pre-wrap; /* Preserves whitespace and wraps text */
+            word-wrap: break-word; /* Breaks long words */
+        }
+        .log-entry { margin-bottom: 8px; }
+        .log-success { color: green; }
+        .log-error { color: red; }
+        .log-info { color: blue; }
+        .log-warn { color: orange; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Google Authentication Tester</h1>
+        <p>Use this tool to obtain a Firebase ID Token and test your backend Google Sign-in/Sign-up endpoints.</p>
+
+        <div class="section">
+            <h2>Step 1: Get Firebase ID Token</h2>
+            <p>Click below to sign in with your Google account. The ID Token will be printed in the console (F12) and the log area.</p>
+            <button id="googleSignInButton">
+                <img src="https://img.icons8.com/color/16/000000/google-logo.png" alt="Google icon"/>
+                Sign in with Google (Client-side)
+            </button>
+            <p><strong>Copy the token from console after sign-in!</strong></p>
+            <input type="text" id="idTokenInput" placeholder="Paste Firebase ID Token here to test backend endpoints">
+        </div>
+
+        <div class="section">
+            <h2>Step 2: Test Backend Endpoints</h2>
+            <p>Ensure your FastAPI backend is running on <code id="backendUrlDisplay">http://localhost:8000</code>.</p>
+            <button id="sendSignUpButton">Send Token for Google Sign Up</button>
+            <button id="sendSignInButton">Send Token for Google Sign In</button>
+        </div>
+
+        <div class="section">
+            <h2>Live Log</h2>
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Your Firebase Web App's configuration
+        // GET THIS FROM YOUR FIREBASE PROJECT SETTINGS -> PROJECT SETTINGS -> YOUR APPS -> WEB APP -> FIREBASE SDK SNIPPET -> CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyD9QtyiVRUfy_pecBEubqyp35D9u_R9nTU",
+            authDomain: "authentication-for-gide.firebaseapp.com",
+            projectId: "authentication-for-gide",
+            storageBucket: "authentication-for-gide.firebasestorage.app",
+            messagingSenderId: "594248581269",
+            appId: "1:594248581269:web:f600da262efb8567a7db9c",
+            measurementId: "G-SNZ4VE5Z5X"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        const googleSignInButton = document.getElementById('googleSignInButton');
+        const idTokenInput = document.getElementById('idTokenInput');
+        const sendSignUpButton = document.getElementById('sendSignUpButton');
+        const sendSignInButton = document.getElementById('sendSignInButton');
+        const logArea = document.getElementById('log');
+        const backendBaseUrl = "http://localhost:8000"; // IMPORTANT: Adjust if your backend runs on a different port/host
+        document.getElementById('backendUrlDisplay').textContent = backendBaseUrl + "/api/v1/auth/";
+
+
+        // --- Utility to add log entries ---
+        function addLog(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logArea.prepend(entry); // Add to top
+            // Optional: trim old entries if log gets too long
+            while (logArea.children.length > 50) {
+                logArea.removeChild(logArea.lastChild);
+            }
+        }
+
+        // --- Step 1: Get Firebase ID Token ---
+        googleSignInButton.addEventListener('click', async () => {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try {
+                addLog('Attempting client-side Google Sign-in...', 'info');
+                const result = await auth.signInWithPopup(provider);
+                const user = result.user;
+                const idToken = await user.getIdToken();
+
+                idTokenInput.value = idToken; // Auto-fill the input field
+                addLog('Client-side Sign-in successful!', 'success');
+                addLog(`Firebase ID Token: ${idToken.substring(0, 50)}... (full token in console)`, 'info');
+                addLog(`User Email: ${user.email}`, 'info');
+                console.log('Firebase ID Token:', idToken);
+                console.log('User Email:', user.email);
+                console.log('User Display Name:', user.displayName);
+
+            } catch (error) {
+                addLog(`Error during client-side Google Sign-in: ${error.message}`, 'error');
+                console.error('Error during Google Sign-in:', error);
+            }
+        });
+
+        // --- Step 2: Send Token to Backend for Google Sign Up ---
+        sendSignUpButton.addEventListener('click', async () => {
+            const idToken = idTokenInput.value.trim();
+            if (!idToken) {
+                addLog('Please get a Firebase ID Token first.', 'warn');
+                return;
+            }
+
+            addLog('Sending token to backend for Google Sign Up...', 'info');
+            try {
+                const response = await fetch(`${backendBaseUrl}/api/v1/auth/google-signup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id_token: idToken }),
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog('Google Sign Up SUCCESS!', 'success');
+                    addLog(`Response: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    addLog(`Google Sign Up FAILED! Status: ${response.status}`, 'error');
+                    addLog(`Error Details: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Network error during Google Sign Up: ${error.message}`, 'error');
+                console.error('Network error during Google Sign Up:', error);
+            }
+        });
+
+        // --- Step 2: Send Token to Backend for Google Sign In ---
+        sendSignInButton.addEventListener('click', async () => {
+            const idToken = idTokenInput.value.trim();
+            if (!idToken) {
+                addLog('Please get a Firebase ID Token first.', 'warn');
+                return;
+            }
+
+            addLog('Sending token to backend for Google Sign In...', 'info');
+            try {
+                const response = await fetch(`${backendBaseUrl}/api/v1/auth/google-signin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id_token: idToken }),
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog('Google Sign In SUCCESS!', 'success');
+                    addLog(`Response: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    addLog(`Google Sign In FAILED! Status: ${response.status}`, 'error');
+                    addLog(`Error Details: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Network error during Google Sign In: ${error.message}`, 'error');
+                console.error('Network error during Google Sign In:', error);
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+
+<!-- 
+# Navigate to the folder containing your HTML file
+cd path/to/your/html/file
+
+# Start a local server (Python 3.x)
+python -m http.server 8000
+
+-->

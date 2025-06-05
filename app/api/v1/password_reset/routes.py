@@ -1,110 +1,74 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from app.schemas.password_reset import PasswordResetRequest, PasswordResetConfirm
+from app.schemas.password_reset import PasswordResetRequest, PasswordResetVerify, PasswordResetConfirm # Corrected imports
 from app.api.deps import get_db
 from app.crud import user as crud_user
-# Removed: from app.core.security import create_access_token, verify_token - no longer needed for code-based reset
-from app.services.email import send_reset_email
-import random # Added for generating the 6-digit code
+# send_reset_email is now called from crud_user.generate_and_send_reset_code, so no direct import here
+# random and uuid are no longer directly used here as their logic is encapsulated in crud_user
 
 router = APIRouter()
 
-@router.post("/forgot")
+@router.get("/check-email")
+def check_email_exists(email: str, db: Session = Depends(get_db)):
+    """
+    Checks if an email already exists in the database.
+    Returns {"exists": True} if found, {"exists": False} otherwise.
+    Always returns 200 OK.
+    """
+    user = crud_user.get_user_by_email(db, email)
+    if user:
+        return {"exists": True, "message": "Email found."}
+    return {"exists": False, "message": "Email not found."}
+
+@router.post("/forgot", status_code=status.HTTP_200_OK)
 def forgot_password(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    Initiates the password reset process by sending a 6-digit code to the user's email.
+    """
     user = crud_user.get_user_by_email(db, payload.email)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Generate a 6-digit code
-    reset_code = str(random.randint(100000, 999999))
-    # Store the code and its expiry in the database
-    crud_user.set_password_reset_code(db, user, reset_code)
+        # For security, return a generic success message even if user not found
+        # to prevent email enumeration.
+        return {"message": "If a matching email address was found, a password reset code has been sent to your email."}
     
-    # Send the 6-digit code to the user's email
-    send_reset_email(to_email=payload.email, code=reset_code)
-    
-    return {"message": "Password reset code has been sent to your email."}
+    # Call the CRUD function to generate, store, and send the code
+    crud_user.generate_and_send_reset_code(db, user) 
+    return {"message": "Password reset code sent to your email."}
 
-@router.post("/reset")
-def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+
+@router.post("/verify-code", status_code=status.HTTP_200_OK)
+def verify_password_reset_code(payload: PasswordResetVerify, db: Session = Depends(get_db)):
+    """
+    Verifies the 6-digit password reset code provided by the user.
+    This is an intermediate step before allowing password change.
+    """
     # Verify the provided code against the stored one
-    # This line now correctly accesses 'payload.email' because the schema will define it.
     if not crud_user.verify_reset_code(db, payload.email, payload.code):
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code.")
+    
+    return {"message": "Code verified successfully. You can now set your new password."}
 
+
+@router.post("/reset", status_code=status.HTTP_200_OK)
+def reset_password_confirm(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+    """
+    Confirms the password reset with the code and sets the new password.
+    The email and code are re-verified for security.
+    """
+    # Verify the provided code again (important for security, even if frontend pre-verified)
+    if not crud_user.verify_reset_code(db, payload.email, payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code.")
+
+    # Update the user's password
     success = crud_user.update_user_password(db, payload.email, payload.new_password)
     if not success:
-        raise HTTPException(status_code=404, detail="User not found or password update failed.")
+        # If user was found by verify_reset_code but update failed, it's a server issue
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Password update failed.")
     
-    # Clear the reset code and expiry after successful password reset
-    user = crud_user.get_user_by_email(db, payload.email) # Re-fetch user to ensure latest state
+    # Clear the reset code and its expiry after successful password reset
+    # Re-fetch user to ensure latest state before clearing
+    user = crud_user.get_user_by_email(db, payload.email) 
     if user:
         crud_user.clear_reset_code(db, user)
         
     return {"message": "Password has been reset successfully."}
-
-
-
-
-# from fastapi import APIRouter, HTTPException, status, Depends
-# from pydantic import BaseModel, EmailStr
-# from sqlalchemy.orm import Session
-
-# from app.api.deps import get_db
-# from app.db.models.user import User
-# from app.services import password_reset
-# from app.core import email_utils
-
-# router = APIRouter(prefix="/password-reset", tags=["Password Reset"])
-
-
-# class PasswordResetRequest(BaseModel):
-#     email: EmailStr
-
-
-# class PasswordResetConfirm(BaseModel):
-#     token: str
-#     new_password: str
-
-
-# @router.post("/request", status_code=200)
-# def request_password_reset(data: PasswordResetRequest, db: Session = Depends(get_db)):
-#     user = db.query(User).filter(User.email == data.email).first()
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="User with this email does not exist."
-#         )
-
-#     token = password_reset.create_password_reset_token(user.email)
-#     reset_link = f"http://localhost:8000/password-reset/confirm?token={token}"
-#     try:
-#         email_utils.send_reset_email(user.email, reset_link)
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-#     return {"message": "Password reset link sent to your email."}
-
-
-# @router.post("/confirm", status_code=200)
-# def confirm_password_reset(data: PasswordResetConfirm, db: Session = Depends(get_db)):
-#     user_email = password_reset.verify_reset_token(data.token)
-#     if not user_email:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="Invalid or expired token."
-#         )
-
-#     user = db.query(User).filter(User.email == user_email).first()
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="User not found."
-#         )
-
-#     user.hashed_password = password_reset.hash_password(data.new_password)
-#     db.commit()
-#     return {"message": "Password has been reset successfully."}
-
-
-
