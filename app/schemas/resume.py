@@ -3,18 +3,15 @@ from typing import Optional
 from datetime import datetime
 
 class ResumeCreate(BaseModel):
-    id:int
-    name:str
-    email:str
-    phoneNumber:str
-    location:str
-    title=str
+    user_id:int
+    title:str
 
 class ResumeOut(BaseModel):
     id: int
-    content: str
-    version: int
+    user_id:int
+    title:str
     created_at: datetime
+    updated_at:datetime
 
     model_config = {
         "from_attributes": True,

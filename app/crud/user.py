@@ -6,28 +6,20 @@ from app.core.security import hash_password
 from datetime import datetime, timedelta
 
 # This is the correct synchronous version you should be using
-def get_user_by_email(db: Session, email: str) -> models.User | None: # Added | None for clarity on return type
-    """
-    Retrieves a user from the database by their email address.
-    """
+def get_user_by_email(db: Session, email: str) -> models.User | None: 
     return db.query(models.User).filter(models.User.email == email).first()
 
 # This is the correct synchronous version you should be using
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
-    """
-    Creates a new user in the database.
-    """
+   
     hashed_pw = hash_password(user.password)
-    db_user = models.User(email=user.email, hashed_password=hashed_pw, fullName=user.fullName)
+    db_user = models.User(email=user.email, hashed_password=hashed_pw, full_name=user.full_name)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
 
 def update_user_password(db: Session, email: str, new_password: str) -> bool:
-    """
-    Updates the password for a user.
-    """
     user = get_user_by_email(db, email)
     if user:
         user.hashed_password = hash_password(new_password)
